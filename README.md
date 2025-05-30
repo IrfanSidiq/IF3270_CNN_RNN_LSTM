@@ -12,6 +12,6 @@ Panduan mengenai contoh cara menjalankan program dapat dilihat di:
 ## Pembagian Tugas
 | NIM       | Tugas                                                                                      |
 |-----------|--------------------------------------------------------------------------------------------|
-| 13522007  | CNN |                   
+| 13522007  | CNN, backpropagation (autodiff) & batch size untuk CNN |                   
 | 13522033  | RNN |
 | 13522041  | LSTM |
