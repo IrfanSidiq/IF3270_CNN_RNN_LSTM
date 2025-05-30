@@ -20,6 +20,7 @@ class LSTM_c(object):
         self.U_o = None
         self.W_o = None
         self.b_o = None
+        self.h_0 = np.zeros((1, units), dtype=np.float32)
 
     def _initialize_weights(self, input_size_runtime=None):
         current_input_size = self.input_size if self.input_size is not None else input_size_runtime
@@ -103,7 +104,7 @@ class LSTM_c(object):
     def _tanh(self, x: np.ndarray) -> np.ndarray:
         return np.tanh(x)
 
-class Bidirectional(object):
+class Bidirectional_c(object):
     def __init__(self, lstm_layer: LSTM_c, merge_mode: str = 'concat'):
         if merge_mode not in ['concat', 'sum', 'mul', 'ave']:
             raise ValueError(f"Unsupported merge mode: {merge_mode}. Choose from 'concat', 'sum', 'mul', 'ave'.")
@@ -157,7 +158,7 @@ class Bidirectional(object):
             elif self.merge_mode == 'ave':
                 return ((fw_final + bw_final) / 2.0).astype(input_sequence.dtype)
 
-class Dense(object):
+class Dense_c(object):
     def __init__(self, units: int, input_size: int = None, activation_function: str = None, use_bias: bool = True):
         self.units = units
         self.input_size = input_size 
@@ -191,7 +192,7 @@ class Dense(object):
     def _initialize_weights_if_needed(self, current_input_size: int):
         if self.W is None:
             if current_input_size is None:
-                raise ValueError("input_size for Dense must be specified for weight initialization.")
+                raise ValueError("input_size for Dense_c must be specified for weight initialization.")
             self.input_size = current_input_size
             self.W = np.random.randn(self.input_size, self.units).astype(np.float32) * 0.01
         if self.use_bias and self.b is None:
@@ -214,7 +215,7 @@ class Dense(object):
             self._initialize_weights_if_needed(current_input_size)
 
         if self.input_size != current_input_size:
-             raise ValueError(f"Input data dimension ({current_input_size}) doesn't match Dense layer input_size ({self.input_size}).")
+             raise ValueError(f"Input data dimension ({current_input_size}) doesn't match Dense_c layer input_size ({self.input_size}).")
 
         linear_output = np.matmul(input_data, self.W)
         if self.use_bias and self.b is not None:
@@ -225,7 +226,7 @@ class Dense(object):
         else:
             return linear_output.astype(input_data.dtype if input_data.dtype in [np.float32, np.float64] else np.float32)
 
-class Embedding(object):
+class Embedding_c(object):
     def __init__(self, input_dim: int, output_dim: int, input_length: int = None):
         self.input_dim = input_dim
         self.output_dim = output_dim
@@ -238,16 +239,16 @@ class Embedding(object):
             input_sequence = input_sequence.numpy()
         
         if not isinstance(input_sequence, np.ndarray) or input_sequence.ndim != 2:
-            raise ValueError("Input for Embedding must be a 2D NumPy array (batch_size, sequence_length).")
+            raise ValueError("Input for Embedding_c must be a 2D NumPy array (batch_size, sequence_length).")
         if np.max(input_sequence) >= self.input_dim or np.min(input_sequence) < 0:
             raise ValueError(f"Values in input_sequence are out of vocabulary range [0, {self.input_dim-1}]")
 
         return self.embeddings[input_sequence].astype(np.float32)
 
-class Dropout(object):
+class Dropout_c(object):
     def __init__(self, rate: float):
         if not (0 <= rate < 1):
-            raise ValueError("Dropout rate must be between 0 (inclusive) and 1 (exclusive).")
+            raise ValueError("Dropout_c rate must be between 0 (inclusive) and 1 (exclusive).")
         self.rate = rate
         self.scale = 1.0 / (1.0 - self.rate) if self.rate < 1.0 and self.rate > 0 else 1.0
 
@@ -261,7 +262,7 @@ class Dropout(object):
         mask = np.random.binomial(1, 1.0 - self.rate, size=input_data.shape).astype(input_data.dtype)
         return (input_data * mask) * self.scale
 
-class Model(object):
+class Model_c(object):
     def __init__(self, layers: list):
         if not isinstance(layers, list) or not all(hasattr(layer, 'forward') for layer in layers):
             raise ValueError("Parameter 'layers' must be a list of layer objects that have a 'forward' method.")
@@ -276,7 +277,7 @@ class Model(object):
             
         current_output = input_data
         for i, layer in enumerate(self.layers):
-            if isinstance(layer, Dropout):
+            if isinstance(layer, Dropout_c):
                 current_output = layer.forward(current_output, training=current_training_mode)
             else:
                 current_output = layer.forward(current_output)
@@ -297,12 +298,12 @@ class Model(object):
 
         keras_layers_with_weights = []
         for keras_layer in keras_model_instance.layers:
-            if isinstance(keras_layer, (tf.keras.layers.Embedding, tf.keras.layers.Bidirectional, tf.keras.layers.SimpleRNN, tf.keras.layers.Dense)):
+            if isinstance(keras_layer, (tf.keras.layers.Embedding, tf.keras.layers.Bidirectional, tf.keras.layers.LSTM, tf.keras.layers.Dense)):
                 keras_layers_with_weights.append(keras_layer)
 
         custom_layers_with_weights = []
         for custom_layer in self.layers:
-             if isinstance(custom_layer, (Embedding, Bidirectional, LSTM_c, Dense)):
+             if isinstance(custom_layer, (Embedding_c, Bidirectional_c, LSTM_c, Dense_c)):
                 custom_layers_with_weights.append(custom_layer)
 
         if len(custom_layers_with_weights) != len(keras_layers_with_weights):
@@ -319,14 +320,14 @@ class Model(object):
             keras_layer = keras_layers_with_weights[i]
 
             try:
-                if isinstance(custom_layer, Embedding) and isinstance(keras_layer, tf.keras.layers.Embedding):
+                if isinstance(custom_layer, Embedding_c) and isinstance(keras_layer, tf.keras.layers.Embedding):
                     k_weights = keras_layer.get_weights()
                     if len(k_weights) == 1:
                         custom_layer.embeddings = k_weights[0].astype(np.float32)
 
-                elif isinstance(custom_layer, Bidirectional) and isinstance(keras_layer, tf.keras.layers.Bidirectional):
+                elif isinstance(custom_layer, Bidirectional_c) and isinstance(keras_layer, tf.keras.layers.Bidirectional):
                     if not (hasattr(keras_layer, 'forward_layer') and isinstance(keras_layer.forward_layer, tf.keras.layers.SimpleRNN)):
-                        print(f"WARNING: Wrapped layer in Keras Bidirectional is not SimpleRNN. Skipping.")
+                        print(f"WARNING: Wrapped layer in Keras Bidirectional is not LSTM. Skipping.")
                         continue
                     
                     # Forward RNN
@@ -355,7 +356,7 @@ class Model(object):
                         custom_layer.b_xh = k_weights[2].astype(np.float32)
                         custom_layer.input_size = k_weights[0].shape[0]
 
-                elif isinstance(custom_layer, Dense) and isinstance(keras_layer, tf.keras.layers.Dense):
+                elif isinstance(custom_layer, Dense_c) and isinstance(keras_layer, tf.keras.layers.Dense):
                     k_weights = keras_layer.get_weights()
                     
                     keras_input_features = k_weights[0].shape[0]
