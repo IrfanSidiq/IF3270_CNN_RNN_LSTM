@@ -2,8 +2,8 @@ import numpy as np
 
 from typing import Optional,  List
 
-from src.core import Tensor, Layer
-from src.functions import ActivationFunction
+from ..core import Tensor, Layer
+from ..functions import ActivationFunction
 
 
 class Dense(Layer):

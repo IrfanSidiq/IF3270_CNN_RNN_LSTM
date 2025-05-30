@@ -2,7 +2,7 @@ import numpy as np
 
 from typing import List, Callable, Set, Union, Tuple, Optional
 
-from src.functions import ActivationFunction, LossFunction
+from ..functions import ActivationFunction, LossFunction
 
 
 class Tensor:
@@ -302,7 +302,7 @@ class Tensor:
                 axes_to_sum.append(i)
         if axes_to_sum:
             current_grad = np.sum(current_grad, axis=tuple(axes_to_sum), keepdims=True)
-            
+
         return current_grad.reshape(original_input_shape)
 
     def __add__(self, other: Union['Tensor', np.ndarray, float, int]) -> 'Tensor':

@@ -2,8 +2,8 @@ import numpy as np
 
 from typing import Tuple, Union, Optional
 
-from src.core import Tensor, Layer
-from src.utils import _calculate_pooling_output_dims
+from ..core import Tensor, Layer
+from ..utils import _calculate_pooling_output_dims
 
 
 class MaxPooling2D(Layer):

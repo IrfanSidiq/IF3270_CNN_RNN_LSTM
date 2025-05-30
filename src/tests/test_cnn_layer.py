@@ -2,10 +2,10 @@ import numpy as np
 import unittest
 import time
 
-from src.core import Tensor
-from src.functions import ReLU
-from src.utils import convolve2d, _calculate_pooling_output_dims, numerical_gradient_array
-from src.layers import Conv2D, Flatten, MaxPooling2D, AveragePooling2D
+from ..core import Tensor
+from ..functions import ReLU
+from ..utils import convolve2d, _calculate_pooling_output_dims, numerical_gradient_array
+from ..layers import Conv2D, Flatten, MaxPooling2D, AveragePooling2D
 
 
 class TestCNNLayer(unittest.TestCase):

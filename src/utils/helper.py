@@ -3,7 +3,7 @@ import numpy as np
 from typing import Tuple
 from scipy.signal import correlate2d
 
-from src.core import Tensor
+from ..core import Tensor
 
 
 def _calculate_padding_2d(input_shape_hw: Tuple[int, int],

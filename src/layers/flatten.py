@@ -2,7 +2,7 @@ import numpy as np
 
 from typing import Optional, Tuple
 
-from src.core import Tensor, Layer
+from ..core import Tensor, Layer
 
 
 class Flatten(Layer):

@@ -3,7 +3,7 @@ import numpy as np
 from abc import ABC, abstractmethod
 from typing import List, Dict
 
-from src.core import Tensor
+from ..core import Tensor
 
 
 class Optimizer(ABC):

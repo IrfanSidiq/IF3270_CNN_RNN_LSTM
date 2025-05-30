@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 from typing import List, Optional, Tuple
 
-from src.core import Tensor
+from ..core import Tensor
 
 
 class Layer(ABC):

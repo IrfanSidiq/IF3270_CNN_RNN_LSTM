@@ -19,9 +19,9 @@ except ImportError:
     print("Warning: TensorFlow/Keras not found. Skipping Keras weight loading tests.")
 
 
-from src.functions import ReLU, Sigmoid 
-from src.layers import Conv2D, MaxPooling2D, AveragePooling2D, Flatten 
-from src.model import Sequential 
+from ..functions import ReLU, Sigmoid 
+from ..layers import Conv2D, MaxPooling2D, AveragePooling2D, Flatten 
+from ..model import Sequential 
 
 
 @unittest.skipIf(not KERAS_AVAILABLE, "TensorFlow/Keras is not installed, skipping Keras interop tests.")

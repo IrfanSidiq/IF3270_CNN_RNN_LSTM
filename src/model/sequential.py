@@ -6,9 +6,10 @@ import h5py
 from typing import List, Optional, Tuple, Dict, Union
 import inspect
 
-from src.core import Tensor, Layer
-from src.functions import LossFunction, MeanSquaredError, CategoricalCrossEntropy, BinaryCrossEntropy
-from src.optimization import Optimizer, Adam
+from ..core import Tensor, Layer
+from ..functions import LossFunction, MeanSquaredError, CategoricalCrossEntropy, BinaryCrossEntropy
+from ..optimization import Optimizer, Adam
+from ..layers import Conv2D, Dense
 
 
 class Sequential:
@@ -249,102 +250,91 @@ class Sequential:
             print(f"Evaluation - loss: {avg_loss:.4f}")
         return avg_loss
     
-    def load_weights_from_keras_h5(self, filepath: str, 
-                                   custom_layer_name_map: Optional[Dict[str, str]] = None,
+    def load_weights_from_keras_h5(self, filepath: str,
+                                   keras_model_instance,
                                    skip_missing_layers: bool = False):
-        """
-        Loads weights from a Keras HDF5 file into the model's layers.
-        """
         if not self.layers:
             print("Warning: Trying to load weights into an empty Sequential model.")
             return
+        if keras_model_instance is None:
+            raise ValueError("`keras_model_instance` must be provided.")
 
-        print(f"Loading weights from Keras H5 file: {filepath}")
-        
-        model_layer_name_to_idx: Dict[str, int] = {layer.name: i for i, layer in enumerate(self.layers)}
+        print(f"Loading weights from Keras H5 file: {filepath} using Keras model '{keras_model_instance.name}' for structure.")
 
         with h5py.File(filepath, 'r') as f:
-            loaded_keras_layer_names = list(f.keys()) 
+            keras_layers_with_weights = [layer for layer in keras_model_instance.layers if layer.get_weights()]
+            custom_layers_expecting_weights = [layer for layer in self.layers if hasattr(layer, 'set_weights_from_keras') or hasattr(layer, 'set_weights_from_keras_bn')]
 
-            for i, current_custom_layer in enumerate(self.layers):
-                custom_layer_name = current_custom_layer.name
-                keras_layer_name_to_find = custom_layer_name 
+            if len(keras_layers_with_weights) != len(custom_layers_expecting_weights) and not skip_missing_layers:
+                raise ValueError(
+                    f"Mismatch in number of layers with weights: Keras model has {len(keras_layers_with_weights)}, "
+                    f"custom model expects {len(custom_layers_expecting_weights)}."
+                )
 
-                if custom_layer_name_map and custom_layer_name in custom_layer_name_map:
-                    keras_layer_name_to_find = custom_layer_name_map[custom_layer_name]
-                elif custom_layer_name_map and keras_layer_name_to_find not in loaded_keras_layer_names:
-                    
-                    for k_name, c_name in custom_layer_name_map.items():
-                        if c_name == custom_layer_name:
-                            keras_layer_name_to_find = k_name
-                            break
-                
-                if keras_layer_name_to_find not in f:
-                    msg = (f"Layer group '{keras_layer_name_to_find}' (for custom layer '{custom_layer_name}') "
-                           f"not found in H5 file. Available groups: {loaded_keras_layer_names}")
-                    if skip_missing_layers:
-                        print(f"Warning: {msg} Skipping.")
-                        continue
-                    else:
-                        raise ValueError(msg)
+            keras_layer_type_counts = {}
+            h5_group_paths_for_keras_layers = []
 
-                keras_layer_group = f[keras_layer_name_to_find]
-                
-                weight_datasets = []
-                def find_datasets(name, obj):
-                    if isinstance(obj, h5py.Dataset):
-                        weight_datasets.append(obj)
-
-                keras_layer_group.visititems(find_datasets)
-
-                sorted_keras_weights_np_list = []
-                if hasattr(current_custom_layer, 'set_weights_from_keras'): 
-                    kernel_ds = None
-                    bias_ds = None
-                    for ds in weight_datasets:
-                        if 'kernel' in ds.name.lower(): kernel_ds = ds
-                        elif 'bias' in ds.name.lower(): bias_ds = ds
-                    
-                    if kernel_ds is not None:
-                        sorted_keras_weights_np_list.append(kernel_ds[()]) 
-                    else:
-                        raise ValueError(f"Kernel not found for layer {keras_layer_name_to_find} in H5 file.")
-                    
-                    if current_custom_layer.use_bias:
-                        if bias_ds is not None:
-                            sorted_keras_weights_np_list.append(bias_ds[()])
-                        else:
-                            print(f"Warning: Bias not found for layer {keras_layer_name_to_find} in H5, "
-                                  f"but layer {current_custom_layer.name} uses bias. Will be zero-initialized if needed.")
-                    
-                    current_custom_layer.set_weights_from_keras(sorted_keras_weights_np_list)
-                
-                elif not current_custom_layer.get_parameters():
-                    print(f"Layer {custom_layer_name} has no loadable weights, skipping.")
-                else:
-                    msg = (f"Layer {custom_layer_name} (type {type(current_custom_layer).__name__}) "
-                           f"does not have a recognized weight loading method "
-                           f"('set_weights_from_keras' or 'set_weights_from_keras_bn').")
-                    if skip_missing_layers:
-                        print(f"Warning: {msg} Skipping.")
-                    else:
-                        raise NotImplementedError(msg)
+            h5_top_level_keys_with_layer_data = [key for key in f.keys() if key.startswith("layers\\")]
+            h5_top_level_keys_with_layer_data.sort() 
             
-            print(f"Successfully loaded weights into {i+1} matched layers.")
+            
+            if len(h5_top_level_keys_with_layer_data) < len(keras_layers_with_weights) and not skip_missing_layers:
+                 raise ValueError(f"Found {len(h5_top_level_keys_with_layer_data)} potential layer data groups in H5 "
+                                  f"(e.g., '{h5_top_level_keys_with_layer_data[:3]}...'), "
+                                  f"but Keras model has {len(keras_layers_with_weights)} layers with weights. Structure mismatch.")
 
-            if not skip_missing_layers:
-                model_keras_names_found = set()
-                if custom_layer_name_map:
-                    for c_name, k_name in custom_layer_name_map.items():
-                        if c_name in model_layer_name_to_idx:
-                             model_keras_names_found.add(k_name)
-                for layer in self.layers:
-                    if custom_layer_name_map and layer.name in custom_layer_name_map.values():
-                        continue 
-                    if layer.name in loaded_keras_layer_names:
-                         model_keras_names_found.add(layer.name)
 
-                unused_keras_layers = set(loaded_keras_layer_names) - model_keras_names_found
-                if unused_keras_layers:
-                    print(f"Warning: The following Keras layer groups in the H5 file were not loaded "
-                          f"into any layer in this Sequential model: {list(unused_keras_layers)}")
+            loaded_custom_layers_count = 0
+            for i, custom_layer_to_load in enumerate(custom_layers_expecting_weights):
+                if i >= len(h5_top_level_keys_with_layer_data): 
+                    if skip_missing_layers:
+                        print(f"Warning: No more Keras H5 layer groups for custom layer {custom_layer_to_load.name}, skipping.")
+                        continue
+                    else: 
+                        raise ValueError(f"Ran out of H5 layer groups for custom layer {custom_layer_to_load.name}")
+
+                h5_group_key_to_use = h5_top_level_keys_with_layer_data[i]
+                k_layer_ref = keras_layers_with_weights[i] 
+
+                print(f"  Attempting to load for custom layer '{custom_layer_to_load.name}' from H5 group key '{h5_group_key_to_use}' (Keras layer: '{k_layer_ref.name}')")
+
+                if h5_group_key_to_use not in f: 
+                    msg = (f"HDF5 group key '{h5_group_key_to_use}' (for Keras layer '{k_layer_ref.name}') "
+                           f"not found directly in H5 file. This is unexpected.")
+                    if skip_missing_layers: print(f"Warning: {msg} Skipping layer."); continue
+                    else: raise ValueError(msg)
+
+                keras_layer_H5_group = f[h5_group_key_to_use] 
+                
+                if 'vars' not in keras_layer_H5_group or not isinstance(keras_layer_H5_group['vars'], h5py.Group):
+                    msg = f"Expected 'vars' subgroup not found or not a group under H5 key '{h5_group_key_to_use}'."
+                    if skip_missing_layers: print(f"Warning: {msg} Skipping layer."); continue
+                    else: raise ValueError(msg)
+                
+                vars_group = keras_layer_H5_group['vars']
+
+                expected_num_keras_weights = len(k_layer_ref.get_weights()) 
+                
+                keras_weights_np_list = []
+                for weight_idx in range(expected_num_keras_weights):
+                    dataset_name = str(weight_idx)
+                    if dataset_name not in vars_group:
+                        msg = (f"Weight dataset '{dataset_name}' not found under '{vars_group.name}' for Keras layer '{k_layer_ref.name}'.")
+                        if skip_missing_layers: print(f"Warning: {msg}"); break 
+                        else: raise ValueError(msg)
+                    keras_weights_np_list.append(vars_group[dataset_name][()])
+                
+                if len(keras_weights_np_list) != expected_num_keras_weights and not skip_missing_layers : 
+                    continue 
+
+                if isinstance(custom_layer_to_load, Conv2D) or isinstance(custom_layer_to_load, Dense):
+                    custom_layer_to_load.set_weights_from_keras(keras_weights_np_list)
+                else:
+                    
+                    msg = f"Custom layer {custom_layer_to_load.name} type {type(custom_layer_to_load).__name__} expects weights but has no specific Keras loader."
+                    if skip_missing_layers: print(f"Warning: {msg}"); continue
+                    else: raise NotImplementedError(msg)
+                
+                loaded_custom_layers_count += 1
+            
+            print(f"Successfully loaded weights into {loaded_custom_layers_count} custom layers that have parameters.")

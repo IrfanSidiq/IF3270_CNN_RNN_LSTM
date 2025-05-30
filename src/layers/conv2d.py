@@ -2,9 +2,9 @@ import numpy as np
 
 from typing import Union, Tuple, Optional, List
 
-from src.core import Tensor, Layer
-from src.functions import ActivationFunction, ReLU
-from src.utils import convolve2d
+from ..core import Tensor, Layer
+from ..functions import ActivationFunction, ReLU
+from ..utils import convolve2d
 
 
 class Conv2D(Layer):
@@ -96,6 +96,7 @@ class Conv2D(Layer):
         Keras kernel shape: (kernel_height, kernel_width, input_channels, num_kernels)
         Keras bias shape: (num_kernels,)
         """
+        print(f"Conv2d with name={self.name} is setting weights from keras")
         if not (1 <= len(keras_weights) <= 2):
             raise ValueError(f"Expected 1 or 2 weight arrays (kernel, [bias]), got {len(keras_weights)}.")
 
@@ -147,6 +148,9 @@ class Conv2D(Layer):
             self.bias = None
         
         self._weights_initialized = True
+        print("Weights:")
+        print(self.weights)
+        print(self.bias)
 
 
     def forward(self, input_tensor: Tensor) -> Tensor:
