@@ -1,38 +1,40 @@
 import numpy as np
+
 from typing import List, Callable, Set, Union, Tuple, Optional
 
-from src.activation_function import ActivationFunction
-from src.loss_function import LossFunction
+from src.functions import ActivationFunction, LossFunction
 
 
 class Tensor:
     data: np.ndarray
     gradient: np.ndarray
-    _Tensor__children: List['Tensor']
-    _Tensor__op: str
-    _Tensor__backward: Callable[[], None]
+    __children: List['Tensor']
+    __op: str
+    __backward: Callable[[], None]
     requires_grad: bool
     tensor_type: str
 
     def __init__(self, data: Union[np.ndarray, list, tuple, int, float],
-                 _children: List['Tensor'] = [], _op: str = "", tensor_type: str = "") -> None:
+                 _children: List['Tensor'] = [], _op: str = "", tensor_type: str = "", requires_grad: bool = True) -> None:
+        
         if not isinstance(data, np.ndarray):
             try:
                 data = np.array(data, dtype=float)
             except TypeError:
                 raise TypeError(f"Expected np.ndarray or convertible type, but got {type(data).__name__} instead")
+        
         self.data = data.astype(float)
         self.gradient = np.zeros_like(self.data, dtype=float)
-        self._Tensor__children = list(_children)
-        self._Tensor__op = _op
-        self._Tensor__backward = lambda: None
-        self.requires_grad = True
+        self.__children = list(_children)
+        self.__op = _op
+        self.__backward = lambda: None
+        self.requires_grad = requires_grad
         self.tensor_type = tensor_type
 
     def __repr__(self) -> str:
         return (
             f"Tensor(data={self.data}, grad={self.gradient}, "
-            f"op='{self._Tensor__op or 'None'}'"
+            f"op='{self.__op or 'None'}'"
             f"{', type=' + self.tensor_type if self.tensor_type else ''})"
         )
 
@@ -68,10 +70,13 @@ class Tensor:
             elif self.data.ndim == 2:
                 self.gradient += res.gradient[:, 1:]
         
-        res._Tensor__backward = __backward
+        res.__backward = __backward
         return res
 
     def sum(self, axis: Optional[Union[int, Tuple[int, ...]]] = None, keepdims: bool = False) -> 'Tensor':
+        """
+        Sums elements in the tensor into one element along the given axis.
+        """
         res_data = np.sum(self.data, axis=axis, keepdims=keepdims)
         
         if not isinstance(res_data, np.ndarray):
@@ -105,7 +110,7 @@ class Tensor:
             
             self.gradient += grad_to_propagate
         
-        res._Tensor__backward = __backward
+        res.__backward = __backward
         return res
 
     @staticmethod
@@ -126,12 +131,12 @@ class Tensor:
         res = Tensor(stacked_data, tensors, f"stack(axis={axis})")
 
         def __backward():
-            for i, child_tensor in enumerate(res._Tensor__children):
+            for i, child_tensor in enumerate(res.__children):
                 slicer = [slice(None)] * res.gradient.ndim
                 slicer[axis] = i
                 child_tensor.gradient += res.gradient[tuple(slicer)]
         
-        res._Tensor__backward = __backward
+        res.__backward = __backward
         return res
 
     def concat(self, tensors: List['Tensor'], axis: int = 0) -> 'Tensor':
@@ -149,7 +154,7 @@ class Tensor:
 
         def __backward():
             current_offset = 0
-            for child_tensor in res._Tensor__children:
+            for child_tensor in res.__children:
                 child_dim_size = child_tensor.shape[axis]
                 
                 slicer = [slice(None)] * res.gradient.ndim
@@ -158,10 +163,13 @@ class Tensor:
                 child_tensor.gradient += res.gradient[tuple(slicer)]
                 current_offset += child_dim_size
         
-        res._Tensor__backward = __backward
+        res.__backward = __backward
         return res
 
     def compute_loss(self, y_true: np.ndarray, loss_function: LossFunction) -> 'Tensor':
+        """
+        Computes the loss value using given loss function and y_true.
+        """
         if not isinstance(y_true, np.ndarray):
             y_true = np.array(y_true, dtype=float)
 
@@ -179,10 +187,13 @@ class Tensor:
             
             self.gradient += grad_for_self * res.gradient[0]
         
-        res._Tensor__backward = __backward
+        res.__backward = __backward
         return res
 
     def compute_activation(self, activation_function: ActivationFunction) -> 'Tensor':
+        """
+        Computes the activation output using given activation function.
+        """
         res_data = activation_function.forward(self.data)
         is_softmax_like = (hasattr(activation_function, '__name__') and 
                            "Softmax" in activation_function.__name__)
@@ -200,17 +211,20 @@ class Tensor:
             else: 
                 self.gradient += grad_act_fn_output * res.gradient
                 
-        res._Tensor__backward = __backward
+        res.__backward = __backward
         return res
 
     def backward(self) -> None:
+        """
+        Starts automated differentiation, calculating gradients from the root of operation tree all the way to the leaves.
+        """
         topo: List[Tensor] = []
         visited: Set[Tensor] = set()
 
         def topological_sort(v_node: Tensor):
             if v_node not in visited:
                 visited.add(v_node)
-                for child in v_node._Tensor__children:
+                for child in v_node.__children:
                     topological_sort(child)
                 topo.append(v_node)
         
@@ -219,9 +233,12 @@ class Tensor:
         self.gradient = np.ones_like(self.data, dtype=float)
         for v_node in reversed(topo):
             if v_node.requires_grad:
-                v_node._Tensor__backward()
+                v_node.__backward()
 
     def __unbroadcast_gradient(self, grad_term: np.ndarray, original_input_shape: tuple) -> np.ndarray:
+        """
+        Broadcasts gradient from a Tensor into its childrens when the dimensions between them are different.
+        """
         current_grad = grad_term
         ndim_diff = current_grad.ndim - len(original_input_shape)
         if ndim_diff > 0:
@@ -255,7 +272,7 @@ class Tensor:
                     grad_for_other = self.__unbroadcast_gradient(res.gradient, other_tensor.data.shape)
                 other_tensor.gradient += grad_for_other
 
-        res._Tensor__backward = __backward
+        res.__backward = __backward
         return res
     
     def __mul__(self, other: Union['Tensor', np.ndarray, float, int]) -> 'Tensor':
@@ -281,7 +298,7 @@ class Tensor:
 
                 other_tensor.gradient += grad_other_term
 
-        res._Tensor__backward = __backward
+        res.__backward = __backward
         return res
 
     def __pow__(self, exponent: Union[int, float]) -> 'Tensor':
@@ -294,7 +311,7 @@ class Tensor:
         def __backward():
             self.gradient += (exponent * (self.data**(exponent - 1.0))) * res.gradient
 
-        res._Tensor__backward = __backward
+        res.__backward = __backward
         return res
 
     def __neg__(self) -> 'Tensor':
@@ -356,7 +373,7 @@ class Tensor:
         def __backward():
             self.gradient += res.gradient.reshape(original_shape)
 
-        res._Tensor__backward = __backward
+        res.__backward = __backward
         return res
 
     def transpose(self, axes: Optional[Tuple[int, ...]] = None) -> 'Tensor':
@@ -370,7 +387,7 @@ class Tensor:
                 inv_axes = tuple(np.argsort(axes))
             self.gradient += np.transpose(res.gradient, inv_axes)
 
-        res._Tensor__backward = __backward
+        res.__backward = __backward
         return res
 
     def mean(self, axis: Optional[Union[int, Tuple[int, ...]]] = None, keepdims: bool = False) -> 'Tensor':
@@ -387,6 +404,7 @@ class Tensor:
                     N = original_shape[axis]
                 else:
                     N = np.prod([original_shape[i] for i in axis])
+
             grad_to_distribute = res.gradient
             if not keepdims and axis is not None:
                 current_shape = list(output_shape)
@@ -394,7 +412,8 @@ class Tensor:
                 for ax_idx in axes_to_insert:
                     current_shape.insert(ax_idx, 1)
                 grad_to_distribute = grad_to_distribute.reshape(tuple(current_shape))
+
             self.gradient += (1/N) * grad_to_distribute
 
-        res._Tensor__backward = __backward
+        res.__backward = __backward
         return res
