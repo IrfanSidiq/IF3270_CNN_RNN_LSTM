@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 from src.core import Tensor
 
@@ -8,9 +8,14 @@ class Layer(ABC):
     """
     Abstract base class for all layers.
     """
-    def __init__(self):
+    def __init__(self, name: Optional[str] = None):
         self.weights: List[Tensor] = []
         self.output: Optional[Tensor] = None
+        self.name = name if name else self.__class__.__name__.lower() + f"_{id(self)}"
+        
+        self._weights_initialized: bool = False 
+        self._built: bool = False 
+        self._input_shape_to_layer: Optional[Tuple[int, ...]] = None 
 
     @abstractmethod
     def forward(self, input: Tensor) -> Tensor:
