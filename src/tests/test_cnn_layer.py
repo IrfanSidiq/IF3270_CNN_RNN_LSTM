@@ -4,11 +4,11 @@ import time
 
 from src.core import Tensor
 from src.functions import ReLU
-from src.utils import convolve2d, _calculate_pooling_output_dims
+from src.utils import convolve2d, _calculate_pooling_output_dims, numerical_gradient_array
 from src.layers import Conv2D, Flatten, MaxPooling2D, AveragePooling2D
 
 
-class TestCNN(unittest.TestCase):
+class TestCNNLayer(unittest.TestCase):
     def assertTensorsAlmostEqual(self, t1: Tensor, t2: Tensor, decimal=6, msg=None):
         np.testing.assert_array_almost_equal(t1.data, t2.data, decimal=decimal, err_msg=msg)
 
@@ -388,26 +388,3 @@ class TestCNN(unittest.TestCase):
         self.assertGradientsAlmostEqual(input_tensor_analytical, num_grad, decimal=4,
                                         msg="Flatten gradient mismatch")
         print("Flatten gradient check PASSED.")
-
-
-def numerical_gradient_array(f, x_numpy_array_original: np.ndarray, df: float, eps: float = 1e-5):
-    grad_numerical = np.zeros_like(x_numpy_array_original, dtype=float)
-    
-    it = np.nditer(x_numpy_array_original, flags=['multi_index'], op_flags=['readonly'])
-    
-    while not it.finished:
-        idx = it.multi_index
-        
-        x_perturbed_plus = x_numpy_array_original.copy()
-        original_val = x_perturbed_plus[idx]
-        x_perturbed_plus[idx] = original_val + eps
-        fx_plus_eps = f(Tensor(x_perturbed_plus)) 
-
-        x_perturbed_minus = x_numpy_array_original.copy()
-        x_perturbed_minus[idx] = original_val - eps
-        fx_minus_eps = f(Tensor(x_perturbed_minus))
-        
-        grad_numerical[idx] = (fx_plus_eps - fx_minus_eps) / (2 * eps)
-        it.iternext()
-        
-    return grad_numerical * df

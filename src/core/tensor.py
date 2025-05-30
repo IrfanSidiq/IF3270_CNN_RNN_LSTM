@@ -200,14 +200,19 @@ class Tensor:
         res = Tensor(res_data, [self], activation_function.__name__)
 
         def __backward():
-            grad_act_fn_output = activation_function.backward(self.data)
-            if is_softmax_like:
+            grad_act_fn_output = activation_function.backward(self.data) 
+            
+            if is_softmax_like: 
                 if self.data.ndim == 1 and grad_act_fn_output.ndim == 2 and res.gradient.ndim == 1:
                     self.gradient += grad_act_fn_output @ res.gradient
                 elif self.data.ndim == 2 and grad_act_fn_output.ndim == 3 and res.gradient.ndim == 2:
                     self.gradient += np.einsum('bij,bj->bi', grad_act_fn_output, res.gradient)
                 else:
-                    raise NotImplementedError(f"Softmax backward for data_ndim={self.data.ndim}, jac_ndim={grad_act_fn_output.ndim}, res_grad_ndim={res.gradient.ndim} unsupported.")
+                    raise NotImplementedError(
+                        f"Softmax backward pass for data_ndim={self.data.ndim} (shape {self.data.shape}), "
+                        f"jacobian_ndim={grad_act_fn_output.ndim} (shape {grad_act_fn_output.shape}), "
+                        f"res_gradient_ndim={res.gradient.ndim} (shape {res.gradient.shape}) is not supported."
+                    )
             else: 
                 self.gradient += grad_act_fn_output * res.gradient
                 
@@ -235,6 +240,54 @@ class Tensor:
             if v_node.requires_grad:
                 v_node.__backward()
 
+    def matmul(self, other: 'Tensor') -> 'Tensor':
+        """
+        Performs matrix multiplication between this tensor (self) and another tensor (other).
+        Currently implemented for 2D x 2D matrix multiplication.
+        self: (M, K), other: (K, N) => result: (M, N)
+        """
+        if not isinstance(other, Tensor):
+            raise TypeError(f"Matrix multiplication requires a Tensor operand, got {type(other).__name__}")
+
+        if self.ndim != 2 or other.ndim != 2:
+            raise ValueError(f"Matrix multiplication currently supports 2D tensors only. "
+                             f"Got shapes: {self.shape} and {other.shape}")
+
+        if self.shape[1] != other.shape[0]:
+            raise ValueError(f"Matrix multiplication dimension mismatch: "
+                             f"{self.shape} @ {other.shape}. Inner dimensions must match.")
+
+        
+        res_data = self.data @ other.data 
+        res = Tensor(res_data, [self, other], "matmul")
+
+        def __backward():
+            dL_dC = res.gradient
+
+            if self.requires_grad:
+                grad_A = dL_dC @ other.data.T
+                self.gradient += grad_A
+
+            if other.requires_grad:
+                grad_B = self.data.T @ dL_dC
+                other.gradient += grad_B
+        
+        res._Tensor__backward = __backward
+        return res
+    
+    def __matmul__(self, other: 'Tensor') -> 'Tensor':
+        return self.matmul(other)
+
+    def __rmatmul__(self, other: Union[np.ndarray, 'Tensor']) -> 'Tensor':
+        if isinstance(other, np.ndarray):
+            other_tensor = Tensor(other) 
+            other_tensor.requires_grad = False 
+            return other_tensor.matmul(self)
+        elif isinstance(other, Tensor):
+             return other.matmul(self)
+        else:
+            return NotImplemented
+
     def __unbroadcast_gradient(self, grad_term: np.ndarray, original_input_shape: tuple) -> np.ndarray:
         """
         Broadcasts gradient from a Tensor into its childrens when the dimensions between them are different.
@@ -249,6 +302,7 @@ class Tensor:
                 axes_to_sum.append(i)
         if axes_to_sum:
             current_grad = np.sum(current_grad, axis=tuple(axes_to_sum), keepdims=True)
+            
         return current_grad.reshape(original_input_shape)
 
     def __add__(self, other: Union['Tensor', np.ndarray, float, int]) -> 'Tensor':

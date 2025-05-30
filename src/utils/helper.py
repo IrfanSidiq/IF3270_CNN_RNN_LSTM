@@ -40,7 +40,7 @@ def convolve2d(input_tensor: 'Tensor',
                      strides: Tuple[int, int] = (1, 1),
                      padding: str = 'valid') -> 'Tensor':
     """
-    Performs 2D cross-correlation (common in DL 'convolution' layers) using SciPy.
+    Performs 2D convolution.
 
     Args:
         input_tensor (Tensor): Input data. Shape (N, C_in, H_in, W_in).
@@ -204,3 +204,26 @@ def _calculate_pooling_output_dims(input_H, input_W, pool_size_H, pool_size_W, s
                          f"Input:({input_H},{input_W}), Pool:({pool_size_H},{pool_size_W}), Stride:({stride_H},{stride_W}), Pad:'{padding_mode}'")
 
     return H_out, W_out, pad_top, pad_bottom, pad_left, pad_right
+
+
+def numerical_gradient_array(f, x_numpy_array_original: np.ndarray, df: float, eps: float = 1e-5):
+    grad_numerical = np.zeros_like(x_numpy_array_original, dtype=float)
+    
+    it = np.nditer(x_numpy_array_original, flags=['multi_index'], op_flags=['readonly'])
+    
+    while not it.finished:
+        idx = it.multi_index
+        
+        x_perturbed_plus = x_numpy_array_original.copy()
+        original_val = x_perturbed_plus[idx]
+        x_perturbed_plus[idx] = original_val + eps
+        fx_plus_eps = f(Tensor(x_perturbed_plus)) 
+
+        x_perturbed_minus = x_numpy_array_original.copy()
+        x_perturbed_minus[idx] = original_val - eps
+        fx_minus_eps = f(Tensor(x_perturbed_minus))
+        
+        grad_numerical[idx] = (fx_plus_eps - fx_minus_eps) / (2 * eps)
+        it.iternext()
+        
+    return grad_numerical * df

@@ -60,24 +60,50 @@ class HyperbolicTangent(ActivationFunction):
         return np.power((2 / (np.exp(x) - np.exp(-x))), 2)
 
 class Softmax(ActivationFunction):
-    def forward(x: np.ndarray) -> np.ndarray:
-        x_shifted = x - np.max(x)
-        sum_e = np.exp(x_shifted).sum()
-        return np.exp(x_shifted) / sum_e
-    
     @staticmethod
-    def backward(x: np.ndarray) -> np.ndarray:
-        softmax_x = Softmax.forward(x)
-        size = x.size
-        arr = np.zeros((size, size))
-        for i in range(size):
-            for j in range(size):
-                delta = 1 if i == j else 0
-                arr[i, j] = softmax_x[i] * (delta - softmax_x[j])
-        
-        return arr
-                
+    def forward(x: np.ndarray) -> np.ndarray: 
+        if x.ndim == 1:
+            x_shifted = x - np.max(x) 
+            exps = np.exp(x_shifted)
+            return exps / np.sum(exps)
+        elif x.ndim == 2:
+            x_shifted = x - np.max(x, axis=1, keepdims=True)
+            exps = np.exp(x_shifted)
+            return exps / np.sum(exps, axis=1, keepdims=True)
+        else:
+            raise ValueError("Softmax input must be 1D or 2D.")
 
+    @staticmethod
+    def backward(x: np.ndarray) -> np.ndarray: 
+        if x.ndim == 1:
+            s = Softmax.forward(x) 
+            num_classes = s.shape[0]
+            
+            jacobian = np.zeros((num_classes, num_classes), dtype=float)
+            for i in range(num_classes):
+                for j in range(num_classes):
+                    delta = 1 if i == j else 0
+                    jacobian[i, j] = s[i] * (delta - s[j])
+            return jacobian 
+
+        elif x.ndim == 2:
+            batch_size, num_classes = x.shape
+            s_batch = Softmax.forward(x) 
+
+            batched_jacobian = np.zeros((batch_size, num_classes, num_classes), dtype=float)
+            
+            for b in range(batch_size):
+                s_sample = s_batch[b, :] 
+                jacobian_sample = np.zeros((num_classes, num_classes), dtype=float)
+                for i in range(num_classes):
+                    for j in range(num_classes):
+                        delta = 1 if i == j else 0
+                        jacobian_sample[i, j] = s_sample[i] * (delta - s_sample[j])
+                batched_jacobian[b, :, :] = jacobian_sample
+            return batched_jacobian 
+        else:
+            raise ValueError("Softmax.backward input x must be 1D or 2D.")
+                
 class GELU(ActivationFunction):
     @staticmethod
     def forward(x: np.ndarray) -> np.ndarray:

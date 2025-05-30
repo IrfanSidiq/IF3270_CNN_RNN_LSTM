@@ -18,7 +18,7 @@ class Conv2D(Layer):
         use_bias: bool = True,
         name: Optional[str] = None):
         
-        super().__init__()
+        super().__init__(name=name)
         self.num_kernels = num_kernels
         self.kernel_size = (kernel_size, kernel_size) if isinstance(kernel_size, int) else kernel_size
         if len(self.kernel_size) != 2:
@@ -43,6 +43,7 @@ class Conv2D(Layer):
         if isinstance(activation, str):
             if activation.lower() == 'relu':
                 self.activation_fn_class = ReLU
+                print("relulululu")
             else:
                 self.activation_fn_class = None
         elif isinstance(activation, type) and issubclass(activation, ActivationFunction):
